@@ -1,0 +1,5 @@
+#!/bin/bash
+
+cd /data/
+/home/user/miniconda3/bin/python /home/user/livox_launch.py
+
