@@ -42,13 +42,20 @@ def get_epoch_mstime():
     return int(time.time() * 1000)
 
 def get_tide_predictions(coops, now_str):
-    """Fetch tide predictions from NOAA API for the given station and date string."""
-    response = requests.get(
-        f'https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?'
-        f'&product=predictions&datum=stnd&interval=hilo&format=json'
-        f'&units=metric&time_zone=lst_ldt&station={coops}&begin_date={now_str}&range=48'
-    )
-    return response.json().get('predictions', [])
+    """Fetch tide predictions from NOAA API for the given station and date string.
+    Returns None if the API call fails."""
+    try:
+        response = requests.get(
+            f'https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?'
+            f'&product=predictions&datum=stnd&interval=hilo&format=json'
+            f'&units=metric&time_zone=lst_ldt&station={coops}&begin_date={now_str}&range=48'
+        )
+        response.raise_for_status()  # Raise an exception for bad status codes
+        return response.json().get('predictions', [])
+    except (requests.RequestException, ValueError) as e:
+        print(f"Error fetching tide data: {e}")
+        print("Falling back to default sampling time")
+        return None
 
 def load_config(file_path):
     """
@@ -86,32 +93,37 @@ def main():
         coops = NEAREST_COOPS
     
     predictions = get_tide_predictions(coops, now_str)
-    closest_past_high_tide, closest_future_high_tide = find_closest_high_tides(predictions)
     
-    print(f"Closest past high tide: {closest_past_high_tide}")
-    print(f"Closest future high tide: {closest_future_high_tide}")
+    if predictions is None:
+        # If we couldn't get tide data, use default sampling time
+        samp_time = default_samp_time
+    else:
+        closest_past_high_tide, closest_future_high_tide = find_closest_high_tides(predictions)
+        
+        print(f"Closest past high tide: {closest_past_high_tide}")
+        print(f"Closest future high tide: {closest_future_high_tide}")
 
-    now = datetime.now()
-    closest_high_tide = None
+        now = datetime.now()
+        closest_high_tide = None
 
-    if closest_past_high_tide and closest_future_high_tide:
-        if (now - closest_past_high_tide) <= (closest_future_high_tide - now):
+        if closest_past_high_tide and closest_future_high_tide:
+            if (now - closest_past_high_tide) <= (closest_future_high_tide - now):
+                closest_high_tide = closest_past_high_tide
+            else:
+                closest_high_tide = closest_future_high_tide
+        elif closest_past_high_tide:
             closest_high_tide = closest_past_high_tide
-        else:
+        elif closest_future_high_tide:
             closest_high_tide = closest_future_high_tide
-    elif closest_past_high_tide:
-        closest_high_tide = closest_past_high_tide
-    elif closest_future_high_tide:
-        closest_high_tide = closest_future_high_tide
 
-    if closest_high_tide:
-        rounded_high_tide = round_to_nearest_hour(closest_high_tide)
-        if rounded_high_tide - timedelta(hours=2) <= now <= rounded_high_tide + timedelta(hours=3):
-            samp_time = 25 * 60  # 20 minutes in seconds
+        if closest_high_tide:
+            rounded_high_tide = round_to_nearest_hour(closest_high_tide)
+            if rounded_high_tide - timedelta(hours=2) <= now <= rounded_high_tide + timedelta(hours=3):
+                samp_time = 25 * 60  # 25 minutes in seconds
+            else:
+                samp_time = default_samp_time
         else:
             samp_time = default_samp_time
-    else:
-        samp_time = default_samp_time
 
     print(f"Sampling time set to: {samp_time} seconds")
     
