@@ -127,6 +127,14 @@ def main():
 
     print(f"Sampling time set to: {samp_time} seconds")
     
+    # Check current minute
+    current_minute = datetime.now().minute
+    
+    # If we're on :30 and not in high tide situation, skip
+    if current_minute == 30 and samp_time != 25 * 60:
+        print("Running on :30 but not in high tide situation, skipping launch")
+        return
+    
     # Run livox_logger with appropriate config file
     config_file = f"conf/config-{samp_time}.yaml"
     try:
